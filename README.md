@@ -1,30 +1,83 @@
-# ESports dashboard design
+eScrims TPO - Frontend (Panel Web)
+Este proyecto es el frontend del TPO de Proceso de Desarrollo de Software (PDS). Es un panel web construido con Next.js y TypeScript diseñado para consumir la API del backend de eScrims (Java/Spring Boot).
 
-*Automatically synced with your [v0.app](https://v0.app) deployments*
+El panel permite a los usuarios registrarse, autenticarse, buscar scrims, crear nuevos scrims y (para administradores) moderar el contenido de la plataforma.
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/francovasquezzs-projects/v0-es-ports-dashboard-design)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/rAAXXvoGi8N)
+🚀 Tecnologías Utilizadas
+Framework: Next.js (React)
 
-## Overview
+Lenguaje: TypeScript
 
-This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
+Gestor de Paquetes: pnpm
 
-## Deployment
+UI (Componentes): shadcn/ui
 
-Your project is live at:
+Estilos: Tailwind CSS
 
-**[https://vercel.com/francovasquezzs-projects/v0-es-ports-dashboard-design](https://vercel.com/francovasquezzs-projects/v0-es-ports-dashboard-design)**
+Llamadas a API: Axios
 
-## Build your app
+📋 Requisitos Previos
+Para ejecutar este proyecto, necesitarás:
 
-Continue building your app on:
+Node.js: (Versión 18.x o superior)
 
-**[https://v0.app/chat/rAAXXvoGi8N](https://v0.app/chat/rAAXXvoGi8N)**
+pnpm: (npm install -g pnpm)
 
-## How It Works
+Backend de eScrims Corriendo: El servidor de Spring Boot DEBE estar ejecutándose localmente en http://localhost:8080.
 
-1. Create and modify your project using [v0.app](https://v0.app)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+⚙️ Instalación
+Sigue estos pasos para configurar el proyecto localmente:
+
+Clona el repositorio (o asegúrate de tener los archivos).
+
+Instala las dependencias usando pnpm:
+
+pnpm install
+
+Instala los componentes de shadcn/ui que podrías necesitar (si no lo hiciste antes):
+pnpm dlx shadcn-ui@latest add button
+pnpm dlx shadcn-ui@latest add label
+pnpm dlx shadcn-ui@latest add input
+pnpm dlx shadcn-ui@latest add card
+
+pnpm install lucide-react
+
+▶️ Ejecución
+Para iniciar el servidor de desarrollo:
+
+Asegúrate de que el backend de Java esté corriendo en localhost:8080.
+
+Ejecuta el siguiente comando para iniciar el frontend:
+
+pnpm run dev
+o
+
+npm run dev
+
+Abre tu navegador y ve a http://localhost:3000.
+
+
+🔌 Conexión con el Backend (CORS)
+Este frontend está configurado para hacer peticiones a http://localhost:8080/api (ver lib/apiClient.ts).
+
+Para que el navegador permita esta conexión, es fundamental que el backend de Spring Boot tenga la configuración de CORS correcta.
+
+Asegúrate de que tu archivo WebConfig.java en el proyecto de backend incluya el addCorsMappings:
+
+// En el proyecto de Spring Boot (TPO_PDS)
+// src/main/java/com/scrim_pds/config/WebConfig.java
+
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+
+    // ... (tu AuthUserArgumentResolver) ...
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/api/**") // Permite CORS para todas las rutas /api
+                .allowedOrigins("http://localhost:3000") // Permite peticiones desde tu frontend
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true);
+    }
+}
