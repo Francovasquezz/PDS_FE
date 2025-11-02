@@ -1,63 +1,66 @@
-"use client"
+// components/filters-bar.tsx
 
-import { useState } from "react"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
+"use client"; // <-- 1. Convertir a componente de cliente
 
-export default function FiltersBar() {
-  const [game, setGame] = useState("")
-  const [region, setRegion] = useState("")
-  const [minRank, setMinRank] = useState("")
-  const [maxRank, setMaxRank] = useState("")
+import { useState } from "react"; // <-- 2. Importar useState
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button"; // Asumo que ya lo instalaste
+import { ScrimFilters } from "@/app/page"; // <-- 3. Importar el tipo de dato
+
+// 4. Definir el tipo de las props que recibirá
+interface FiltersBarProps {
+  onSearch: (filters: ScrimFilters) => void;
+}
+
+export default function FiltersBar({ onSearch }: FiltersBarProps) {
+  // 5. Estado local para cada filtro
+  const [juego, setJuego] = useState("");
+  const [region, setRegion] = useState("");
+  const [rangoMin, setRangoMin] = useState("");
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    // 6. Llama a la función del padre (app/page.tsx) con los filtros
+    onSearch({
+      juego: juego || undefined, // Enviar undefined si está vacío
+      region: region || undefined,
+      rangoMin: rangoMin || undefined,
+    });
+  };
 
   return (
-    <div className="bg-card border border-border rounded-lg p-6 mb-8">
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {/* Game Select */}
-        <Select value={game} onValueChange={setGame}>
-          <SelectTrigger className="bg-input border-border text-foreground">
-            <SelectValue placeholder="Juego" />
-          </SelectTrigger>
-          <SelectContent className="bg-card border-border">
-            <SelectItem value="valorant">Valorant</SelectItem>
-            <SelectItem value="lol">League of Legends</SelectItem>
-            <SelectItem value="cs2">CS2</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {/* Region Select */}
-        <Select value={region} onValueChange={setRegion}>
-          <SelectTrigger className="bg-input border-border text-foreground">
-            <SelectValue placeholder="Región" />
-          </SelectTrigger>
-          <SelectContent className="bg-card border-border">
-            <SelectItem value="latam">LATAM</SelectItem>
-            <SelectItem value="na">NA</SelectItem>
-            <SelectItem value="euw">EUW</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {/* Min Rank Input */}
-        <Input
-          placeholder="Rango Mínimo"
-          value={minRank}
-          onChange={(e) => setMinRank(e.target.value)}
-          className="bg-input border-border text-foreground placeholder:text-muted-foreground"
-        />
-
-        {/* Max Rank Input */}
-        <Input
-          placeholder="Rango Máximo"
-          value={maxRank}
-          onChange={(e) => setMaxRank(e.target.value)}
-          className="bg-input border-border text-foreground placeholder:text-muted-foreground"
-        />
-
-        {/* Search Button */}
-        <button className="px-4 py-2 bg-secondary text-secondary-foreground font-semibold rounded-lg hover:bg-opacity-80 transition-all">
-          Buscar
-        </button>
-      </div>
-    </div>
-  )
+    <form onSubmit={handleSearch} className="flex flex-col md:flex-row items-center gap-4 mb-6">
+      <Select value={juego} onValueChange={setJuego}>
+        <SelectTrigger className="w-full md:w-auto">
+          <SelectValue placeholder="Juego" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="Valorant">Valorant</SelectItem>
+          <SelectItem value="League of Legends">League of Legends</SelectItem>
+          <SelectItem value="CS2">CS2</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select value={region} onValueChange={setRegion}>
+        <SelectTrigger className="w-full md:w-auto">
+          <SelectValue placeholder="Región" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="LATAM">LATAM</SelectItem>
+          <SelectItem value="NA">NA</SelectItem>
+          <SelectItem value="EUW">EUW</SelectItem>
+          <SelectItem value="SA">SA (Brasil)</SelectItem>
+        </SelectContent>
+      </Select>
+      <Input
+        placeholder="Rango Mínimo"
+        className="w-full md:w-auto"
+        value={rangoMin}
+        onChange={(e) => setRangoMin(e.target.value)}
+      />
+      
+      {/* 7. El botón ahora es de tipo "submit" */}
+      <Button type="submit">Buscar</Button> 
+    </form>
+  );
 }

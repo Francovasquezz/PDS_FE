@@ -1,29 +1,37 @@
-import type React from "react"
-import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
-import "./globals.css"
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { ThemeProvider } from "@/components/theme-provider"; //
+import { AuthProvider } from "@/context/AuthContext"; // <-- 1. Importar
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "eScrims - Plataforma de Scrims para eSports",
-  description: "Plataforma para organizar y encontrar scrims competitivos",
-  generator: "v0.app",
-}
+  title: "eScrims TPO",
+  description: "Plataforma de Scrims PDS",
+};
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode
+  children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className="dark">
-      <body className={`font-sans antialiased bg-background text-foreground`}>
-        {children}
-        <Analytics />
+    <html lang="es" suppressHydrationWarning>
+      <body className={inter.className}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {/* 2. Envolver {children} con AuthProvider */}
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+          
+        </ThemeProvider>
       </body>
     </html>
-  )
+  );
 }
