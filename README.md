@@ -41,7 +41,9 @@ Sigue estos pasos para configurar el proyecto localmente:
     pnpm dlx shadcn-ui@latest add label
     pnpm dlx shadcn-ui@latest add input
     pnpm dlx shadcn-ui@latest add card
+    pnpm dlx shadcn-ui@latest add avatar badge button card checkbox dropdown-menu input label select sonner table textarea
     ```
+    (Esto instalará todos los componentes que usamos en el proyecto: avatar, badge, button, card, checkbox, dropdown-menu, input, label, select, sonner (para notificaciones), table y textarea).
 4.  **Instala los íconos**:
     ```bash
     pnpm install lucide-react
@@ -57,6 +59,10 @@ Para iniciar el servidor de desarrollo:
 2.  Ejecuta el siguiente comando para iniciar el frontend:
     ```bash
     pnpm run dev
+    ```
+    o
+    ```bash
+    npm run dev
     ```
 3.  Abre tu navegador y ve a **`http://localhost:3000`**.
 
