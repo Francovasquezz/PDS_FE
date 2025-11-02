@@ -1,7 +1,7 @@
-"use client"; // <-- 1. Añadir "use client"
+"use client"; 
 
 import Link from "next/link";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; //
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; 
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,12 +9,12 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"; //
-import { ShieldIcon, SwordsIcon } from "lucide-react";
-import { useAuth } from "@/context/AuthContext"; // <-- 2. Importar useAuth
+} from "@/components/ui/dropdown-menu"; 
+import { ShieldIcon, SwordsIcon } from "lucide-react"; // Asegúrate de tener lucide-react (pnpm install lucide-react)
+import { useAuth } from "@/context/AuthContext"; // <-- 1. Importamos el hook de autenticación
 
 export function Header() {
-  const auth = useAuth(); // <-- 3. Usar el contexto
+  const auth = useAuth(); // <-- 2. Usamos el hook para obtener los datos del usuario
 
   return (
     <header className="flex items-center justify-between h-16 px-6 border-b">
@@ -31,17 +31,21 @@ export function Header() {
           Buscar Scrims
         </Link>
         <Link
-          href="/my-scrims" // Necesitarás crear esta página
+          href="/my-scrims" 
           className="text-sm font-medium hover:underline"
           prefetch={false}
         >
           Mis Scrims
         </Link>
         
-        {/* --- 4. Lógica de Admin --- */}
+        {/* --- 3. ¡LA LÓGICA ESTÁ AQUÍ! --- */}
+        {/* Esto comprueba si el usuario está autenticado Y si su rol es 'ADMIN'.
+          Tu backend define este rol en UserRole.java
+          y se guarda en tu users.json
+        */}
         {auth.user?.rol === 'ADMIN' && (
           <Link
-            href="/moderation" // Necesitarás crear esta página
+            href="/moderation" 
             className="flex items-center gap-2 text-sm font-medium hover:underline text-yellow-500"
             prefetch={false}
           >
@@ -49,6 +53,7 @@ export function Header() {
             Moderación
           </Link>
         )}
+        {/* --- FIN DE LA LÓGICA --- */}
         
       </nav>
       <DropdownMenu>
@@ -56,7 +61,6 @@ export function Header() {
           <Avatar className="h-9 w-9">
             <AvatarImage src="/placeholder-user.jpg" />
             <AvatarFallback>
-              {/* Muestra iniciales del usuario */}
               {auth.user?.username?.substring(0, 2).toUpperCase() || 'U'}
             </AvatarFallback>
           </Avatar>
@@ -64,12 +68,13 @@ export function Header() {
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuLabel>{auth.user?.username || 'Mi Cuenta'}</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
-            <Link href="/profile">Perfil</Link> {/* Necesitarás crear esta página */}
+
+          <DropdownMenuItem asChild className="cursor-pointer">
+            <Link href="/profile">Perfil</Link>
           </DropdownMenuItem>
+
           <DropdownMenuSeparator />
           
-          {/* --- 5. Lógica de Logout --- */}
           <DropdownMenuItem 
             onSelect={() => auth.logout()} 
             className="text-red-500 cursor-pointer"

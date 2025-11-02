@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider"; //
-import { AuthProvider } from "@/context/AuthContext"; // <-- 1. Importar
+import { ThemeProvider } from "@/components/theme-provider";
+import { AuthProvider } from "@/context/AuthContext"; 
+import { Toaster } from "@/components/ui/sonner"; // <-- 1. Importar
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -25,9 +26,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {/* 2. Envolver {children} con AuthProvider */}
           <AuthProvider>
             {children}
+            <Toaster position="top-right" richColors /> {/* <-- 2. Añadir Toaster */}
           </AuthProvider>
           
         </ThemeProvider>
