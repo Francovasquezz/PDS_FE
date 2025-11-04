@@ -29,6 +29,7 @@ export default function StatsPage() {
   const id = params.id as string;
 
   const [participantes, setParticipantes] = useState<User[]>([]);
+  
   const [stats, setStats] = useState<StatRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);

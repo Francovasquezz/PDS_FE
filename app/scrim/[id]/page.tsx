@@ -224,10 +224,10 @@ export default function ScrimDetailPage() {
      );
   }
 
-  const otherParticipants = postulaciones
-    .filter(p => p.estado === 'ACEPTADA' && p.usuarioId !== auth.user?.id)
-    .map(p => ({ id: p.usuarioId, username: p.username || p.usuarioId }));
-    
+    const otherParticipants = estadisticas
+        .filter(stat => stat.usuarioId !== auth.user?.id) // Filtramos al usuario actual
+        .map(stat => ({ id: stat.usuarioId, username: stat.username })); // Mapeamos al formato que necesita el dropdown
+        
   const canCancel = scrim.estado === 'BUSCANDO' || scrim.estado === 'LOBBY_ARMADO' || scrim.estado === 'CONFIRMADO';
 
   return (
