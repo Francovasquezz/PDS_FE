@@ -38,7 +38,6 @@ export interface Scrim {
   matchmakingStrategyType?: string | null;
 }
 
-// ---------- FEEDBACK ----------
 export interface Feedback {
   id: string;
   scrimId: string;
@@ -48,8 +47,12 @@ export interface Feedback {
   comment: string;
   moderationState: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
   createdAt: string; // ISO 8601
+  
+  // --- INICIO DE MODIFICACIÓN ---
+  reviewerUsername?: string;
+  targetUsername?: string;
+  // --- FIN DE MODIFICACIÓN ---
 }
-
 export type ModerationStateUpdate = 'APROBADO' | 'RECHAZADO';
 
 // ---------- POSTULACION ----------

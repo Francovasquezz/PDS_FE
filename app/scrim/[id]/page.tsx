@@ -6,7 +6,8 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import apiClient from "@/lib/apiClient";
 import { toast } from "sonner";
-import { Scrim, Postulacion, EstadisticaResponse } from "@/lib/types"; // <-- IMPORTAR EstadisticaResponse
+// --- 1. IMPORTAR 'Feedback' ---
+import { Scrim, Postulacion, EstadisticaResponse, Feedback } from "@/lib/types"; 
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -22,10 +23,11 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+// --- 2. IMPORTAR NUEVO ICONO ---
 import { 
   CalendarIcon, GlobeIcon, ShieldIcon, UsersIcon, CheckIcon, 
   XIcon, PlayIcon, StopCircleIcon, ClockIcon, ThumbsDownIcon,
-  CalendarPlusIcon, Trash2Icon, TrophyIcon // <-- IMPORTAR TrophyIcon
+  CalendarPlusIcon, Trash2Icon, TrophyIcon, MessageSquareQuoteIcon
 } from "lucide-react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
@@ -40,17 +42,21 @@ export default function ScrimDetailPage() {
 
   const [scrim, setScrim] = useState<Scrim | null>(null);
   const [postulaciones, setPostulaciones] = useState<Postulacion[]>([]);
-  // --- NUEVO ESTADO PARA STATS ---
   const [estadisticas, setEstadisticas] = useState<EstadisticaResponse[]>([]);
+  // --- 3. AÑADIR NUEVO ESTADO ---
+  const [approvedFeedback, setApprovedFeedback] = useState<Feedback[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // ... (isConfirming, feedbackTarget, etc. sin cambios) ...
   const [isConfirming, setIsConfirming] = useState(false);
   
   const [feedbackTarget, setFeedbackTarget] = useState<string>("");
   const [feedbackRating, setFeedbackRating] = useState<number>(5);
   const [feedbackComment, setFeedbackComment] = useState<string>("");
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
 
   const isOwner = auth.user?.id === scrim?.organizadorId;
   const myPostulacion = !isOwner
@@ -59,13 +65,13 @@ export default function ScrimDetailPage() {
 
   const hasConfirmed = myPostulacion?.hasConfirmed || false; 
 
-  // --- FUNCIÓN DE CARGA MODIFICADA ---
   const fetchScrimData = async () => {
     if (!id || !auth.isAuthenticated) return;
     try {
       setLoading(true);
       setError(null);
-      setEstadisticas([]); // Limpiar stats viejas
+      setEstadisticas([]); 
+      setApprovedFeedback([]); // <-- 4. Limpiar feedback viejo
 
       // 1. Cargar Scrim
       const scrimResponse = await apiClient.get<Scrim>(`/scrims/${id}`);
@@ -73,23 +79,31 @@ export default function ScrimDetailPage() {
       setScrim(scrimData);
       
       // 2. Cargar Postulaciones
-      // (Recordar que el backend ahora las filtra según el estado del scrim)
       const postResponse = await apiClient.get<Postulacion[]>(`/scrims/${id}/postulaciones`);
       setPostulaciones(postResponse.data);
 
-      // 3. Si el Scrim está FINALIZADO, cargar Estadísticas
+      // 3. Si el Scrim está FINALIZADO, cargar Estadísticas y Feedback
       if (scrimData.estado === 'FINALIZADO') {
+        // Cargar Stats
         try {
           const statsResponse = await apiClient.get<EstadisticaResponse[]>(`/scrims/${id}/estadisticas`);
           setEstadisticas(statsResponse.data);
         } catch (statsErr: any) {
-          // Si da 403 (aún no cargadas) o 404, no es un error crítico.
-          if (statsErr.response?.status !== 404 && statsErr.response?.status !== 403) {
+           if (statsErr.response?.status !== 404 && statsErr.response?.status !== 403) {
              console.error("Error al cargar estadísticas:", statsErr);
              toast.error("No se pudieron cargar las estadísticas.");
-          }
-          // Si no hay stats, simplemente `estadisticas` queda como array vacío
+           }
         }
+        
+        // --- 5. AÑADIR LLAMADA A API DE FEEDBACK ---
+        try {
+          const feedbackRes = await apiClient.get<Feedback[]>(`/scrims/${id}/feedback`);
+          setApprovedFeedback(feedbackRes.data);
+        } catch (fbErr) {
+          console.warn("No se pudo cargar el feedback aprobado.", fbErr);
+          // No es un error crítico si falla
+        }
+        // --- FIN DE LLAMADA ---
       }
       
     } catch (err) { 
@@ -101,7 +115,8 @@ export default function ScrimDetailPage() {
     }
   };
 
-  // Cargar datos
+  // ... (useEffect y todos los Handlers no cambian) ...
+    // Cargar datos
   useEffect(() => {
     if (!auth.loading) {
       if (!auth.isAuthenticated) {
@@ -144,13 +159,6 @@ export default function ScrimDetailPage() {
     } catch (err: any) { toast.error(err.response?.data?.error || "Error al finalizar scrim."); }
   };
   const handleCancel = async () => {
-    // Reemplazamos window.confirm por un modal simple (o quitamos la confirmación)
-    // Por simplicidad, quitamos la confirmación. 
-    // Idealmente, aquí iría un <AlertDialog> de shadcn.
-    /* if (!window.confirm("¿Estás seguro de que quieres cancelar este Scrim? Esta acción no se puede deshacer.")) {
-      return;
-    }
-    */
     try {
       await apiClient.post(`/scrims/${id}/cancelar`);
       toast.success("Scrim cancelado exitosamente.");
@@ -165,16 +173,14 @@ export default function ScrimDetailPage() {
     try {
       await apiClient.post(`/scrims/${id}/confirmaciones`);
       toast.success("¡Asistencia confirmada!");
-      // Actualizamos el estado local
       if (myPostulacion) {
-          // Creamos una nueva lista de postulaciones actualizada
           setPostulaciones(prev => 
               prev.map(p => 
                   p.id === myPostulacion.id ? { ...p, hasConfirmed: true } : p
               )
           );
       }
-      fetchScrimData(); // Recargar datos por si el Scrim cambia a CONFIRMADO
+      fetchScrimData(); 
     } catch (err: any) {
       toast.error(err.response?.data?.error || "Error al confirmar.");
     } finally {
@@ -202,9 +208,18 @@ export default function ScrimDetailPage() {
       setIsSubmittingFeedback(false);
     }
   };
+  
+  // Lógica de cálculo de `otherParticipants` (usando tu fix anterior)
+  const otherParticipants = estadisticas
+    .filter(stat => stat.usuarioId !== auth.user?.id) 
+    .map(stat => ({ id: stat.usuarioId, username: stat.username }));
+    
+  const canCancel = scrim?.estado === 'BUSCANDO' || scrim?.estado === 'LOBBY_ARMADO' || scrim?.estado === 'CONFIRMADO';
+
 
   // --- RENDERIZADO ---
   if (loading || auth.loading || !scrim) {
+     // ... (sin cambios)
      return (
        <div className="flex flex-col min-h-screen">
          <Header />
@@ -214,6 +229,7 @@ export default function ScrimDetailPage() {
   }
   
   if (error) {
+     // ... (sin cambios)
      return (
        <div className="flex flex-col min-h-screen">
          <Header />
@@ -224,11 +240,6 @@ export default function ScrimDetailPage() {
      );
   }
 
-    const otherParticipants = estadisticas
-        .filter(stat => stat.usuarioId !== auth.user?.id) // Filtramos al usuario actual
-        .map(stat => ({ id: stat.usuarioId, username: stat.username })); // Mapeamos al formato que necesita el dropdown
-        
-  const canCancel = scrim.estado === 'BUSCANDO' || scrim.estado === 'LOBBY_ARMADO' || scrim.estado === 'CONFIRMADO';
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -238,7 +249,7 @@ export default function ScrimDetailPage() {
         {/* --- SECCIÓN 1: Detalles del Scrim (Sin cambios) --- */}
         <Card>
           {/* ... (código de detalles) ... */}
-          <CardHeader>
+           <CardHeader>
             <div className="flex justify-between items-center">
               <CardTitle className="text-3xl">{scrim.juego} - {scrim.formato.replace('FORMATO_', '')}</CardTitle>
               <Badge 
@@ -281,8 +292,9 @@ export default function ScrimDetailPage() {
           </CardContent>
         </Card>
 
-        {/* --- SECCIÓN 2: Panel del Organizador (Modificado) --- */}
+        {/* --- SECCIÓN 2: Panel del Organizador (Sin cambios) --- */}
         {isOwner && (
+          // ... (código del panel de organizador) ...
           <Card>
             <CardHeader>
               <CardTitle>Panel del Organizador</CardTitle>
@@ -303,7 +315,6 @@ export default function ScrimDetailPage() {
                 {scrim.estado === 'FINALIZADO' && (
                   <Button asChild>
                     <Link href={`/scrim/${id}/stats`}>
-                      {/* Si no hay stats, es "Cargar". Si hay, es "Editar". */}
                       {estadisticas.length === 0 ? "Cargar Estadísticas" : "Editar Estadísticas"}
                     </Link>
                   </Button>
@@ -318,7 +329,6 @@ export default function ScrimDetailPage() {
               {/* Tabla de Postulantes */}
               {scrim.estado === 'BUSCANDO' && (
                 <div>
-                  {/* ... (código de la tabla) ... */}
                   <h3 className="text-lg font-medium mb-2">Postulantes</h3>
                   <Table>
                     <TableHeader>
@@ -370,11 +380,10 @@ export default function ScrimDetailPage() {
           </Card>
         )}
 
-        {/* --- SECCIÓN 3: Paneles del Jugador (CORREGIDOS) --- */}
-        
-        {/* 3.1: Muestra el estado de la postulación */}
+        {/* --- SECCIÓN 3: Paneles del Jugador (Sin cambios) --- */}
         {!isOwner && myPostulacion && (scrim.estado !== 'FINALIZADO') && (
-          <Card>
+          // ... (código del estado de postulación) ...
+           <Card>
             <CardHeader>
               <CardTitle>Estado de tu Postulación</CardTitle>
             </CardHeader>
@@ -400,10 +409,9 @@ export default function ScrimDetailPage() {
             </CardContent>
           </Card>
         )}
-
-        {/* 3.2: Muestra el botón de Confirmar */}
         {!isOwner && myPostulacion && myPostulacion.estado === 'ACEPTADA' && scrim.estado === 'LOBBY_ARMADO' && (
-            <Card>
+           // ... (código del botón de confirmar) ...
+           <Card>
               <CardHeader>
                   <CardTitle>¡Confirma tu participación!</CardTitle>
                   <CardDescription>
@@ -422,9 +430,9 @@ export default function ScrimDetailPage() {
             </Card>
         )}
         
-        {/* --- SECCIÓN 4: ESTADÍSTICAS (NUEVA) --- */}
-        {/* Se muestra a TODOS si el scrim finalizó y hay stats */}
+        {/* --- SECCIÓN 4: ESTADÍSTICAS (Sin cambios) --- */}
         {scrim.estado === 'FINALIZADO' && estadisticas.length > 0 && (
+          // ... (código de la tabla de estadísticas) ...
           <Card>
             <CardHeader>
               <CardTitle>Estadísticas Finales</CardTitle>
@@ -458,9 +466,40 @@ export default function ScrimDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* --- 6. AÑADIR NUEVA SECCIÓN: FEEDBACK APROBADO --- */}
+        {scrim.estado === 'FINALIZADO' && approvedFeedback.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Feedback de la Comunidad</CardTitle>
+              <CardDescription>
+                Comentarios (aprobados por moderación) de los participantes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {approvedFeedback.map(fb => (
+                <div key={fb.id} className="border-b pb-4 last:border-b-0">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-semibold">
+                      {fb.reviewerUsername || 'Anónimo'}
+                      <span className="text-muted-foreground font-normal mx-2">evaluó a</span>
+                      {fb.targetUsername || 'Anónimo'}
+                    </h4>
+                    <span className="text-lg font-bold text-yellow-500">{fb.rating} ★</span>
+                  </div>
+                  <blockquote className="border-l-2 pl-4 italic text-muted-foreground flex items-center gap-2">
+                     <MessageSquareQuoteIcon className="w-4 h-4 flex-shrink-0" />
+                     {fb.comment || "(Sin comentario)"}
+                  </blockquote>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
         
-        {/* 3.3: Muestra el formulario de Feedback (Ahora SECCIÓN 5) */}
+        {/* --- 7. FORMULARIO DE DEJAR FEEDBACK (Sin cambios) --- */}
         {!isOwner && myPostulacion && myPostulacion.estado === 'ACEPTADA' && scrim.estado === 'FINALIZADO' && (
+           // ... (código del formulario de feedback) ...
            <Card>
             <CardHeader>
               <CardTitle>Dejar Feedback</CardTitle>
@@ -478,7 +517,6 @@ export default function ScrimDetailPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {otherParticipants.length === 0 && (
-                        /* Corregimos el crash del value="" */
                         <SelectItem value="no-players" disabled>No hay otros jugadores para evaluar.</SelectItem>
                       )}
                       {otherParticipants.map(p => (
