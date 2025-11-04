@@ -3,7 +3,7 @@ export interface User {
   id: string;
   username: string;
   email: string;
-  rol: 'USER' | 'ADMIN'; // Basado en tu UserRole.java
+  rol: 'USER' | 'ADMIN';
 }
 
 export interface LoginResponse {
@@ -11,22 +11,34 @@ export interface LoginResponse {
   user: User;
 }
 
-// Basado en Scrim.java
+// ---------- SCRIM ----------
+export type ScrimState =
+  | 'BUSCANDO' | 'LOBBY_ARMADO' | 'CONFIRMADO'
+  | 'EN_JUEGO' | 'FINALIZADO' | 'CANCELADO';
+
 export interface Scrim {
   id: string;
   juego: string;
-  formato: 'FORMATO_1V1' | 'FORMATO_3V3' | 'FORMATO_5V5';
+  formato: 'FORMATO_1V1' | 'FORMATO_3V3' | 'FORMATO_5V5'; // amplía si suman más
   region: string;
   rangoMin: string;
   rangoMax: string;
-  fechaHora: string; 
-  estado: 'BUSCANDO' | 'LOBBY_ARMADO' | 'CONFIRMADO' | 'EN_JUEGO' | 'FINALIZADO' | 'CANCELADO';
+  fechaHora: string; // ISO
+  estado: ScrimState;
   organizadorId: string;
-  cupo: number;
-  descripcion: string
+
+  // En el back 'cupo' es Integer (puede ser null)
+  cupo?: number | null;
+
+  // Opcionales que existen en el back (no siempre los usás en UI)
+  descripcion?: string | null;
+  latenciaMax?: number | null;
+  duracion?: number | null;
+  modalidad?: string | null;
+  matchmakingStrategyType?: string | null;
 }
 
-// Basado en Feedback.java y ModerationState.java
+// ---------- FEEDBACK ----------
 export interface Feedback {
   id: string;
   scrimId: string;
@@ -35,12 +47,12 @@ export interface Feedback {
   rating: number;
   comment: string;
   moderationState: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
-  createdAt: string; // Es un string ISO 8601
+  createdAt: string; // ISO 8601
 }
 
-// Basado en ModerationRequest.java
 export type ModerationStateUpdate = 'APROBADO' | 'RECHAZADO';
 
+// ---------- POSTULACION ----------
 export interface Postulacion {
   id: string;
   usuarioId: string;
@@ -48,12 +60,25 @@ export interface Postulacion {
   rolDeseado: string;
   estado: 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA';
   latenciaReportada: number;
-  fechaPostulacion: string; // ISO string
-  // Podríamos añadir el username aquí si el backend lo devuelve
-  username?: string; // (Opcional, pero útil)
+  fechaPostulacion: string; // ISO
+  username?: string;
+  hasConfirmed: boolean; // <-- nuevo campo del back
 }
 
+// ---------- MIS SCRIMS ----------
 export interface MyScrimResponse {
   scrim: Scrim;
-  postulationState: 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA' | null;
+  // El back probablemente devuelve "postulacionState" (es) — mantenemos ambos por compatibilidad
+  postulacionState?: 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA' | null;
+  postulationState?: 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA' | null;
+}
+
+// ---------- ESTADISTICAS (alineado al back) ----------
+export interface EstadisticaRequest {
+  usuarioId: string;        // UUID en string
+  mvp: boolean;
+  kills: number;
+  deaths: number;
+  assists: number;
+  observaciones?: string | null;
 }

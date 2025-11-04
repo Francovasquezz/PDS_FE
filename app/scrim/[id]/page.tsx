@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react"; // *** CAMBIO: agrego useMemo
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import apiClient from "@/lib/apiClient";
 import { toast } from "sonner";
@@ -23,8 +24,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { 
   CalendarIcon, GlobeIcon, ShieldIcon, UsersIcon, CheckIcon, 
-  XIcon, PlayIcon, StopCircleIcon, ClockIcon, ThumbsDownIcon
+  XIcon, PlayIcon, StopCircleIcon, ClockIcon, ThumbsDownIcon,
+  CalendarPlusIcon, Trash2Icon
 } from "lucide-react";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+
 
 export default function ScrimDetailPage() {
   const router = useRouter();
@@ -45,44 +50,29 @@ export default function ScrimDetailPage() {
   const [feedbackComment, setFeedbackComment] = useState<string>("");
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
-  // --- VARIABLES DERIVADAS ---
   const isOwner = auth.user?.id === scrim?.organizadorId;
+ const myPostulacion = !isOwner
+  ? postulaciones.find(p => p.usuarioId === auth.user?.id) ?? null
+  : null;
 
-  // *** CAMBIO: calcular myPostulacion matcheando por usuario logueado,
-  // en lugar de agarrar postulaciones[0]
-const myPostulacion = useMemo(() => {
-  if (isOwner) return null;
-  if (!auth.user?.id && !auth.user?.username) return null;
+  // --- 1. ¡AQUÍ ESTÁ LA CORRECCIÓN DEL BUG! ---
+  // Ahora `hasConfirmed` lee el campo correcto del backend
+  const hasConfirmed = myPostulacion?.hasConfirmed || false; 
+  // --- FIN DE LA CORRECCIÓN ---
 
-  // 1. Intentar machear por usuarioId <-> auth.user.id (caso ideal)
-  let mine = postulaciones.find(p => p.usuarioId === auth.user?.id);
-
-  // 2. Si eso no funcionó (IDs distintos entre front/back), fallback por username
-  if (!mine && auth.user?.username) {
-    mine = postulaciones.find(p => p.username === auth.user?.username);
-  }
-
-  return mine || null;
-}, [isOwner, postulaciones, auth.user]);
-
-const hasConfirmed = myPostulacion?.estado === "ACEPTADA";
-
-  // --- 1. FUNCIÓN PARA CARGAR TODOS LOS DATOS ---
+  // Función de Carga (Corregida)
   const fetchScrimData = async () => {
     if (!id || !auth.isAuthenticated) return;
-    
     try {
       setLoading(true);
       setError(null);
-      
       const scrimResponse = await apiClient.get<Scrim>(`/scrims/${id}`);
       setScrim(scrimResponse.data);
-
-      // Siempre pedimos postulaciones; backend decide qué devolver
+      
       const postResponse = await apiClient.get<Postulacion[]>(`/scrims/${id}/postulaciones`);
       setPostulaciones(postResponse.data);
       
-    } catch (err) {
+    } catch (err) { 
       console.error(err);
       setError("No se pudo cargar el Scrim.");
       toast.error("Error al cargar datos del Scrim.");
@@ -91,7 +81,7 @@ const hasConfirmed = myPostulacion?.estado === "ACEPTADA";
     }
   };
 
-  // Cargar datos al montar la página
+  // Cargar datos
   useEffect(() => {
     if (!auth.loading) {
       if (!auth.isAuthenticated) {
@@ -103,16 +93,15 @@ const hasConfirmed = myPostulacion?.estado === "ACEPTADA";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, auth.loading, auth.isAuthenticated, router]);
 
-
-  // --- 2. HANDLERS ---
+  
+  // --- Handlers ---
   const handleAccept = async (postulacionId: string) => { 
     try {
       await apiClient.post(`/scrims/${id}/postulaciones/${postulacionId}/aceptar`);
       toast.success("Postulante aceptado.");
-      setPostulaciones(prev => prev.map(p => p.id === postulacionId ? { ...p, estado: 'ACEPTADA' } : p));
+      fetchScrimData(); // Recargar datos
     } catch (err: any) { toast.error(err.response?.data?.error || "Error al aceptar."); }
   };
-
   const handleReject = async (postulacionId: string) => { 
     try {
       await apiClient.post(`/scrims/${id}/postulaciones/${postulacionId}/rechazar`);
@@ -120,42 +109,49 @@ const hasConfirmed = myPostulacion?.estado === "ACEPTADA";
       setPostulaciones(prev => prev.map(p => p.id === postulacionId ? { ...p, estado: 'RECHAZADA' } : p));
     } catch (err: any) { toast.error(err.response?.data?.error || "Error al rechazar."); }
   };
-
   const handleStart = async () => { 
     try {
       await apiClient.post(`/scrims/${id}/iniciar`);
       toast.success("¡Scrim iniciado!");
-      setScrim((prev) => prev ? { ...prev, estado: 'EN_JUEGO' } : prev);
+      if (scrim) setScrim({ ...scrim, estado: 'EN_JUEGO' });
     } catch (err: any) { toast.error(err.response?.data?.error || "Error al iniciar scrim."); }
   };
-
   const handleFinish = async () => { 
      try {
       await apiClient.post(`/scrims/${id}/finalizar`);
       toast.success("Scrim finalizado. Ya puedes cargar estadísticas.");
-      setScrim((prev) => prev ? { ...prev, estado: 'FINALIZADO' } : prev);
+      if (scrim) setScrim({ ...scrim, estado: 'FINALIZADO' });
     } catch (err: any) { toast.error(err.response?.data?.error || "Error al finalizar scrim."); }
   };
-
+  const handleCancel = async () => {
+    if (!window.confirm("¿Estás seguro de que quieres cancelar este Scrim? Esta acción no se puede deshacer.")) {
+      return;
+    }
+    try {
+      await apiClient.post(`/scrims/${id}/cancelar`);
+      toast.success("Scrim cancelado exitosamente.");
+      if (scrim) setScrim({ ...scrim, estado: 'CANCELADO' });
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Error al cancelar el scrim.");
+    }
+  };
+  
+  // --- 2. CORRECCIÓN EN handleConfirm ---
   const handleConfirm = async () => { 
     setIsConfirming(true);
     try {
       await apiClient.post(`/scrims/${id}/confirmaciones`);
       toast.success("¡Asistencia confirmada!");
-      // *** CAMBIO: en lugar de pisar todo el array con [myPostulacion ...]
-      // actualizamos SOLO mi postulación en el estado global
-      setPostulaciones(prev => prev.map(p => {
-        if (p.usuarioId === auth.user?.id) {
-          return { ...p, estado: "ACEPTADA" };
-        }
-        return p;
-      }));
+      // Actualizamos el estado local
+      if (myPostulacion) setPostulaciones([{ ...myPostulacion, hasConfirmed: true }]);
+      fetchScrimData(); // Recargar datos por si el Scrim cambia a CONFIRMADO
     } catch (err: any) {
       toast.error(err.response?.data?.error || "Error al confirmar.");
     } finally {
       setIsConfirming(false);
     }
   };
+  // --- FIN DE LA CORRECCIÓN ---
 
   const handleFeedbackSubmit = async (e: React.FormEvent) => { 
     e.preventDefault();
@@ -178,7 +174,7 @@ const hasConfirmed = myPostulacion?.estado === "ACEPTADA";
     }
   };
 
-  // --- 3. RENDERIZADO ---
+  // --- RENDERIZADO ---
   if (loading || auth.loading || !scrim) {
      return (
        <div className="flex flex-col min-h-screen">
@@ -202,19 +198,22 @@ const hasConfirmed = myPostulacion?.estado === "ACEPTADA";
   const otherParticipants = postulaciones
     .filter(p => p.estado === 'ACEPTADA' && p.usuarioId !== auth.user?.id)
     .map(p => ({ id: p.usuarioId, username: p.username || p.usuarioId }));
+    
+  const canCancel = scrim.estado === 'BUSCANDO' || scrim.estado === 'LOBBY_ARMADO' || scrim.estado === 'CONFIRMADO';
 
   return (
     <div className="flex flex-col min-h-screen">
       <Header />
       <main className="flex-1 p-6 md:p-8 max-w-6xl mx-auto w-full space-y-8">
         
-        {/* --- SECCIÓN 1: Detalles del Scrim --- */}
+        {/* --- SECCIÓN 1: Detalles del Scrim (Sin cambios) --- */}
         <Card>
+          {/* ... (código de detalles) ... */}
           <CardHeader>
             <div className="flex justify-between items-center">
               <CardTitle className="text-3xl">{scrim.juego} - {scrim.formato.replace('FORMATO_', '')}</CardTitle>
               <Badge 
-                variant={scrim.estado === 'BUSCANDO' ? 'default' : 'secondary'}
+                variant={scrim.estado === 'BUSCANDO' ? 'default' : (scrim.estado === 'CANCELADO' ? 'destructive' : 'secondary')}
                 className={`text-lg ${scrim.estado === 'BUSCANDO' ? 'bg-green-600' : ''}`}
               >
                 {scrim.estado}
@@ -222,35 +221,46 @@ const hasConfirmed = myPostulacion?.estado === "ACEPTADA";
             </div>
             <CardDescription>{scrim.descripcion || "Sin descripción."}</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="flex items-center gap-2">
-              <ShieldIcon className="w-5 h-5" />
-              <span className="text-lg">Rango: {scrim.rangoMin} - {scrim.rangoMax}</span>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="flex items-center gap-2">
+                <ShieldIcon className="w-5 h-5" />
+                <span className="text-lg">Rango: {scrim.rangoMin} - {scrim.rangoMax}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <GlobeIcon className="w-5 h-5" />
+                <span className="text-lg">Región: {scrim.region}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="w-5 h-5" />
+                <span className="text-lg">{new Date(scrim.fechaHora).toLocaleString('es-AR')}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <UsersIcon className="w-5 h-5" />
+                <span className="text-lg">Cupo: {scrim.cupo} jugadores</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <GlobeIcon className="w-5 h-5" />
-              <span className="text-lg">Región: {scrim.region}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CalendarIcon className="w-5 h-5" />
-              <span className="text-lg">{new Date(scrim.fechaHora).toLocaleString('es-AR')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <UsersIcon className="w-5 h-5" />
-              <span className="text-lg">Cupo: {scrim.cupo} jugadores</span>
+            
+            <div className="pt-4 border-t">
+              <Button asChild variant="outline">
+                <a href={`${API_BASE_URL}/scrims/${id}/calendar`} download>
+                  <CalendarPlusIcon className="w-4 h-4 mr-2" />
+                  Añadir al Calendario
+                </a>
+              </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* --- SECCIÓN 2: Panel del Organizador --- */}
+        {/* --- SECCIÓN 2: Panel del Organizador (Sin cambios) --- */}
         {isOwner && (
           <Card>
             <CardHeader>
               <CardTitle>Panel del Organizador</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Botones de Iniciar/Finalizar */}
-              <div className="flex gap-4">
+              {/* Botones de Acción */}
+              <div className="flex flex-wrap gap-4">
                 {scrim.estado === 'CONFIRMADO' && (
                   <Button onClick={handleStart} className="bg-green-600 hover:bg-green-700">
                     <PlayIcon className="w-4 h-4 mr-2" /> Iniciar Scrim
@@ -262,13 +272,23 @@ const hasConfirmed = myPostulacion?.estado === "ACEPTADA";
                   </Button>
                 )}
                 {scrim.estado === 'FINALIZADO' && (
-                  <Button variant="outline" disabled>Cargar Estadísticas (Próximamente)</Button>
+                  <Button asChild>
+                    <Link href={`/scrim/${id}/stats`}>
+                      Cargar Estadísticas
+                    </Link>
+                  </Button>
+                )}
+                {canCancel && (
+                  <Button onClick={handleCancel} variant="destructive" className="bg-red-700 hover:bg-red-800">
+                    <Trash2Icon className="w-4 h-4 mr-2" /> Cancelar Scrim
+                  </Button>
                 )}
               </div>
               
               {/* Tabla de Postulantes */}
               {scrim.estado === 'BUSCANDO' && (
                 <div>
+                  {/* ... (código de la tabla) ... */}
                   <h3 className="text-lg font-medium mb-2">Postulantes</h3>
                   <Table>
                     <TableHeader>
@@ -320,9 +340,9 @@ const hasConfirmed = myPostulacion?.estado === "ACEPTADA";
           </Card>
         )}
 
-        {/* --- SECCIÓN 3: Paneles del Jugador --- */}
+        {/* --- SECCIÓN 3: Paneles del Jugador (CORREGIDOS) --- */}
         
-        {/* 3.1: Estado de la postulación */}
+        {/* 3.1: Muestra el estado de la postulación */}
         {!isOwner && myPostulacion && (
           <Card>
             <CardHeader>
@@ -332,55 +352,50 @@ const hasConfirmed = myPostulacion?.estado === "ACEPTADA";
               {myPostulacion.estado === 'PENDIENTE' && (
                 <>
                   <ClockIcon className="w-10 h-10 text-yellow-500" />
-                  <span className="text-lg">
-                    Tu postulación está <strong>PENDIENTE</strong>. El organizador la está revisando.
-                  </span>
+                  <span className="text-lg">Tu postulación está **PENDIENTE**. El organizador la está revisando.</span>
                 </>
               )}
               {myPostulacion.estado === 'RECHAZADA' && (
                 <>
                   <ThumbsDownIcon className="w-10 h-10 text-red-500" />
-                  <span className="text-lg">
-                    Tu postulación fue <strong>RECHAZADA</strong>.
-                  </span>
+                  <span className="text-lg">Tu postulación fue **RECHAZADA**.</span>
                 </>
               )}
               {myPostulacion.estado === 'ACEPTADA' && (
                 <>
                   <CheckIcon className="w-10 h-10 text-green-500" />
-                  <span className="text-lg">
-                    ¡Has sido <strong>ACEPTADO</strong>!
-                  </span>
+                  <span className="text-lg">¡Has sido **ACEPTADO**!</span>
                 </>
               )}
             </CardContent>
           </Card>
         )}
 
-        {/* 3.2: Botón de Confirmar asistencia */}
+        {/* 3.2: Muestra el botón de Confirmar */}
+        {/* (La lógica `hasConfirmed` ahora funciona) */}
         {!isOwner && myPostulacion && myPostulacion.estado === 'ACEPTADA' && scrim.estado === 'LOBBY_ARMADO' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>¡Confirma tu participación!</CardTitle>
-              <CardDescription>
-                ¡Has sido aceptado y el lobby está lleno! Confirma tu asistencia para asegurar tu lugar.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button 
-                className="w-full bg-blue-600 hover:bg-blue-700" 
-                disabled={isConfirming || hasConfirmed}
-                onClick={handleConfirm}
-              >
-                {isConfirming ? "Confirmando..." : (hasConfirmed ? "¡Confirmado!" : "Confirmar Asistencia")}
-              </Button>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardHeader>
+                  <CardTitle>¡Confirma tu participación!</CardTitle>
+                  <CardDescription>
+                  ¡Has sido aceptado y el lobby está lleno! Confirma tu asistencia para asegurar tu lugar.
+                  </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  className="w-full bg-blue-600 hover:bg-blue-700" 
+                  disabled={isConfirming || hasConfirmed}
+                  onClick={handleConfirm}
+                >
+                  {isConfirming ? "Confirmando..." : (hasConfirmed ? "¡Confirmado!" : "Confirmar Asistencia")}
+                </Button>
+              </CardContent>
+            </Card>
         )}
         
-        {/* 3.3: Formulario de Feedback */}
+        {/* 3.3: Muestra el formulario de Feedback */}
         {!isOwner && myPostulacion && myPostulacion.estado === 'ACEPTADA' && scrim.estado === 'FINALIZADO' && (
-          <Card>
+           <Card>
             <CardHeader>
               <CardTitle>Dejar Feedback</CardTitle>
               <CardDescription>
@@ -408,10 +423,7 @@ const hasConfirmed = myPostulacion?.estado === "ACEPTADA";
                 
                 <div className="space-y-2">
                   <Label htmlFor="feedbackRating">Rating (1-5)</Label>
-                  <Select
-                    value={String(feedbackRating)}
-                    onValueChange={(v) => setFeedbackRating(Number(v))}
-                  >
+                   <Select value={String(feedbackRating)} onValueChange={(v) => setFeedbackRating(Number(v))}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>

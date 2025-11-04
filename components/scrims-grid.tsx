@@ -5,16 +5,18 @@ import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button"; 
-import { CalendarIcon, GlobeIcon, ShieldIcon } from "lucide-react"; 
+import { CalendarIcon, GlobeIcon, ShieldIcon, CalendarPlusIcon } from "lucide-react"; 
 import apiClient from "@/lib/apiClient"; 
-import { Scrim, MyScrimResponse } from "@/lib/types"; // <-- 1. Importar MyScrimResponse
+import { Scrim, MyScrimResponse } from "@/lib/types";
 import { useAuth } from "@/context/AuthContext"; 
 import { toast } from "sonner"; 
+import { cn } from "@/lib/utils"; // <-- 1. Importar 'cn' para clases condicionales
 
-// --- 2. ACTUALIZAR PROPS ---
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+
 interface ScrimsGridProps {
-  scrims?: Scrim[]; // Para el dashboard
-  myScrimsData?: MyScrimResponse[]; // Para "Mis Scrims"
+  scrims?: Scrim[]; 
+  myScrimsData?: MyScrimResponse[];
   loading: boolean;
   error: string | null;
   emptyMessage?: string; 
@@ -49,7 +51,6 @@ export default function ScrimsGrid({ scrims, myScrimsData, loading, error, empty
     }
   };
 
-  // --- 3. LÓGICA DE RENDERIZADO (MANEJAR AMBOS TIPOS DE LISTA) ---
   if (loading) {
     return <div className="text-center">Cargando scrims...</div>;
   }
@@ -57,7 +58,6 @@ export default function ScrimsGrid({ scrims, myScrimsData, loading, error, empty
     return <div className="text-center text-red-500">{error}</div>;
   }
 
-  // Determinar qué lista usar
   const itemsToRender = myScrimsData ? myScrimsData : scrims;
 
   if (!itemsToRender || itemsToRender.length === 0) {
@@ -67,69 +67,88 @@ export default function ScrimsGrid({ scrims, myScrimsData, loading, error, empty
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {itemsToRender.map((item) => {
-        // --- 4. EXTRAER DATOS ---
+        
+        // --- 2. LÓGICA DE DATOS Y ESTADO (REFACTORIZADA) ---
         const scrim: Scrim = (item as MyScrimResponse).scrim ? (item as MyScrimResponse).scrim : (item as Scrim);
-        const postulationState = (item as MyScrimResponse).postulationState || null;
+const postulationState =
+  (item as MyScrimResponse).postulacionState ??
+  (item as MyScrimResponse).postulationState ??
+  null;
+
         
-        // Lógica de botones (no cambia)
         const isOwner = auth.user?.id === scrim.organizadorId;
-        const isSearching = scrim.estado === 'BUSCANDO';
-        const isApplying = applyingTo === scrim.id;
-        const hasApplied = appliedScrims.has(scrim.id) || postulationState === 'PENDIENTE' || postulationState === 'ACEPTADA';
+        const isMyScrimsPage = !!myScrimsData;
+        const isCancelled = scrim.estado === 'CANCELADO'; // <-- ¡NUESTRA VARIABLE CLAVE!
 
-        let buttonText = "Postularse";
-        let buttonDisabled = false;
-
-        if (isOwner) {
-          // No seteamos texto, se reemplaza por el botón de Administrar
-        } else if (hasApplied) {
-          buttonText = postulationState ? `Estado: ${postulationState}` : "¡Postulado!";
-          buttonDisabled = true;
-        } else if (isApplying) {
-          buttonText = "Postulando...";
-          buttonDisabled = true;
-        } else if (!isSearching) {
-          buttonText = "Cerrado";
-          buttonDisabled = true;
+        // --- Lógica de Badge ---
+        let badge: React.ReactNode;
+        if (isCancelled) {
+            badge = <Badge variant="destructive">CANCELADO</Badge>;
+        } else if (isMyScrimsPage && postulationState) {
+            badge = <Badge
+                      variant={postulationState === 'ACEPTADA' ? 'default' : (postulationState === 'RECHAZADA' ? 'destructive' : 'secondary')}
+                      className={postulationState === 'ACEPTADA' ? 'bg-green-600' : ''}
+                    >
+                      {postulationState}
+                    </Badge>;
+        } else {
+            badge = <Badge 
+                      variant={scrim.estado === 'BUSCANDO' ? 'default' : 'secondary'}
+                      className={scrim.estado === 'BUSCANDO' ? 'bg-green-600' : ''}
+                    >
+                      {scrim.estado}
+                    </Badge>;
         }
-        
+
+        // --- Lógica de Footer ---
+        let footer: React.ReactNode;
+        if (isCancelled) {
+            // 1. Scrim está CANCELADO
+            footer = <Button variant="destructive" disabled className="w-full">Scrim Cancelado</Button>;
+        } else if (isOwner) {
+            // 2. Soy el Organizador (y no está cancelado)
+            footer = <Button asChild className="w-full"><Link href={`/scrim/${scrim.id}`}>Administrar Scrim</Link></Button>;
+        } else if (isMyScrimsPage) {
+            // 3. Estoy en "Mis Scrims" (no soy dueño, no cancelado)
+            footer = (
+                <>
+                    <Button asChild className="flex-1" variant="secondary"><Link href={`/scrim/${scrim.id}`}>Ver Detalle</Link></Button>
+                    {(postulationState === 'ACEPTADA' || scrim.estado === 'CONFIRMADO') && (
+                        <Button asChild variant="outline" size="icon" title="Añadir al Calendario">
+                            <a href={`${API_BASE_URL}/scrims/${scrim.id}/calendar`} download><CalendarPlusIcon className="w-4 h-4" /></a>
+                        </Button>
+                    )}
+                </>
+            );
+        } else {
+            // 4. Estoy en el Dashboard general (no dueño, no cancelado)
+            const isApplying = applyingTo === scrim.id;
+            const hasApplied = appliedScrims.has(scrim.id);
+            const isSearching = scrim.estado === 'BUSCANDO';
+            footer = (
+                <Button 
+                  className="w-full" 
+                  disabled={isApplying || hasApplied || !isSearching}
+                  onClick={() => handlePostular(scrim)}
+                >
+                  {isApplying ? "Postulando..." : (hasApplied ? "¡Postulado!" : "Postularse")}
+                </Button>
+            );
+        }
+
         return (
-          <Card key={scrim.id}>
+          // --- 3. APLICAR CLASES CONDICIONALES A LA TARJETA ---
+          <Card key={scrim.id} className={cn(isCancelled && "border-destructive/50 opacity-60")}>
             <CardHeader>
               <div className="flex justify-between items-center">
-                {isOwner ? (
+                <Link href={`/scrim/${scrim.id}`} className="hover:underline">
                   <CardTitle>{scrim.juego} - {scrim.formato.replace('FORMATO_', '')}</CardTitle>
-                ) : (
-                  <Link href={`/scrim/${scrim.id}`} className="hover:underline">
-                    <CardTitle>{scrim.juego} - {scrim.formato.replace('FORMATO_', '')}</CardTitle>
-                  </Link>
-                )}
-                
-                {/* --- 5. MOSTRAR EL BADGE CORRECTO --- */}
-                {postulationState ? (
-                  // Si estamos en "Mis Scrims", mostramos el estado de la postulación
-                  <Badge
-                    variant={postulationState === 'ACEPTADA' ? 'default' : (postulationState === 'RECHAZADA' ? 'destructive' : 'secondary')}
-                    className={postulationState === 'ACEPTADA' ? 'bg-green-600' : ''}
-                  >
-                    {postulationState}
-                  </Badge>
-                ) : (
-                  // Si estamos en el Dashboard general, mostramos el estado del Scrim
-                  <Badge 
-                    variant={scrim.estado === 'BUSCANDO' ? 'default' : 'secondary'}
-                    className={scrim.estado === 'BUSCANDO' ? 'bg-green-600' : ''}
-                  >
-                    {scrim.estado}
-                  </Badge>
-                )}
-                {/* --- FIN DEL CAMBIO DE BADGE --- */}
-                
+                </Link>
+                {badge}
               </div>
               <CardDescription>ID: {scrim.id}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* (Contenido de la card sin cambios) */}
               <div className="flex items-center gap-2">
                 <ShieldIcon className="w-4 h-4" />
                 <span>Rango: {scrim.rangoMin} - {scrim.rangoMax}</span>
@@ -144,22 +163,8 @@ export default function ScrimsGrid({ scrims, myScrimsData, loading, error, empty
               </div>
             </CardContent>
             
-            <CardFooter>
-              {isOwner ? (
-                // Si soy el dueño, muestro un link para "Administrar"
-                <Button asChild className="w-full">
-                  <Link href={`/scrim/${scrim.id}`}>Administrar Scrim</Link>
-                </Button>
-              ) : (
-                // Si no soy el dueño, muestro el botón "Postularse"
-                <Button 
-                  className="w-full" 
-                  disabled={buttonDisabled}
-                  onClick={() => handlePostular(scrim)}
-                >
-                  {buttonText}
-                </Button>
-              )}
+            <CardFooter className="flex gap-2">
+              {footer}
             </CardFooter>
           </Card>
         );
