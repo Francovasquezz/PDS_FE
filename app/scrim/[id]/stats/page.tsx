@@ -1,151 +1,127 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { useAuth } from "@/context/AuthContext";
-import apiClient from "@/lib/apiClient";
-import { toast } from "sonner";
-import { Scrim, Postulacion, EstadisticaRequest } from "@/lib/types";
-import { Header } from "@/components/header";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
+import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
+import apiClient from '@/lib/apiClient';
+import { User, EstadisticaRequest } from '@/lib/types'; 
+import { toast } from 'sonner';
+import { Header } from '@/components/header';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Trash2Icon } from 'lucide-react';
 
-// ---- NUEVO: tipo local alineado al back (sin usuarioId) ----
-type FormStatRow = Omit<EstadisticaRequest, "usuarioId">;
-
-// Helper para mensajes de error consistentes
-const getErrMsg = (err: any) =>
-  err?.response?.data?.message ??
-  err?.response?.data?.error ??
-  err?.message ??
-  "Error";
+// Estado local para cada fila de estadística
+type StatRow = Omit<EstadisticaRequest, 'usuarioId'> & {
+  usuarioId: string; 
+  username: string; 
+};
 
 export default function StatsPage() {
   const router = useRouter();
   const params = useParams();
   const auth = useAuth();
-
   const id = params.id as string;
 
-  const [scrim, setScrim] = useState<Scrim | null>(null);
-  const [participants, setParticipants] = useState<Postulacion[]>([]);
+  const [participantes, setParticipantes] = useState<User[]>([]);
+  const [stats, setStats] = useState<StatRow[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Mapa: usuarioId -> stats
-  const [statsMap, setStatsMap] = useState<Record<string, FormStatRow>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!auth.loading && !auth.isAuthenticated) {
+      router.push('/login');
+      return;
+    }
     if (!id || !auth.isAuthenticated) return;
 
-    const fetchData = async () => {
+    const fetchParticipants = async () => {
       try {
         setLoading(true);
+        const res = await apiClient.get<User[]>(`/scrims/${id}/participants`);
+        
+        const allParticipants = res.data;
+        setParticipantes(allParticipants);
 
-        // 1) Scrim
-        const scrimRes = await apiClient.get<Scrim>(`/scrims/${id}`);
+        setStats(allParticipants.map(p => ({
+          usuarioId: p.id,
+          username: p.username,
+          mvp: false,
+          kills: 0,
+          deaths: 0,
+          assists: 0,
+          observaciones: '', // Inicializado como string vacío
+        })));
 
-        // Seguridad: dueño + estado FINALIZADO (el back lo requiere)
-        if (scrimRes.data.organizadorId !== auth.user?.id) {
-          toast.error("Acceso denegado", { description: "No eres el organizador." });
-          router.push(`/scrim/${id}`);
-          return;
-        }
-        if (scrimRes.data.estado !== "FINALIZADO") {
-          toast.error("Solo se puede cargar estadísticas de scrims finalizados.");
-          router.push(`/scrim/${id}`);
-          return;
-        }
-
-        setScrim(scrimRes.data);
-
-        // 2) Participantes (organizador ve todas las postulaciones)
-        const postRes = await apiClient.get<Postulacion[]>(`/scrims/${id}/postulaciones`);
-        const accepted = postRes.data.filter((p) => p.estado === "ACEPTADA");
-
-        setParticipants(accepted);
-
-        // 3) Inicializar formulario
-        const initial: Record<string, FormStatRow> = {};
-        for (const p of accepted) {
-          initial[p.usuarioId] = {
-            mvp: false,
-            kills: 0,
-            deaths: 0,
-            assists: 0,
-            observaciones: "",
-          };
-        }
-        setStatsMap(initial);
       } catch (err) {
-        toast.error(getErrMsg(err) || "Error al cargar los datos.");
-        router.push(`/scrim/${id}`);
+        console.error(err);
+        toast.error('No se pudieron cargar los participantes.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, [id, auth.isAuthenticated, auth.user?.id, router]);
-
-  // ---- Handlers ----
-  const setNumber = (val: string) => {
-    const n = Number(val);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
-  };
+    fetchParticipants();
+  }, [id, auth.isAuthenticated, auth.loading, router]);
 
   const handleStatChange = (
-    userId: string,
-    field: keyof FormStatRow,
+    usuarioId: string, 
+    field: keyof Omit<StatRow, 'usuarioId' | 'username'>, 
     value: string | number | boolean
   ) => {
-    setStatsMap((prev) => ({
-      ...prev,
-      [userId]: {
-        ...prev[userId],
-        [field]: value as any,
-      },
-    }));
+    setStats(prevStats =>
+      prevStats.map(stat =>
+        stat.usuarioId === usuarioId ? { ...stat, [field]: value } : stat
+      )
+    );
+  };
+
+  const handleMvpChange = (usuarioId: string, checked: boolean) => {
+    setStats(prevStats =>
+      prevStats.map(stat => ({
+        ...stat,
+        mvp: stat.usuarioId === usuarioId ? checked : (checked ? false : stat.mvp),
+      }))
+    );
+  };
+  
+  const removeParticipant = (usuarioId: string) => {
+     setStats(prevStats => prevStats.filter(stat => stat.usuarioId !== usuarioId));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const statsList: EstadisticaRequest[] = Object.entries(statsMap).map(
-      ([usuarioId, stats]) => ({
-        usuarioId,
-        mvp: !!stats.mvp,
-        kills: Number(stats.kills) || 0,
-        deaths: Number(stats.deaths) || 0,
-        assists: Number(stats.assists) || 0,
-        observaciones: stats.observaciones ?? "",
-      })
-    );
-
-    if (statsList.length === 0) {
+    if (stats.length === 0) {
       toast.error("No hay estadísticas para enviar.");
       return;
     }
+    
+    setIsSubmitting(true);
+
+    const payload: EstadisticaRequest[] = stats.map(({ username, ...rest }) => rest);
 
     try {
-      await apiClient.post(`/scrims/${id}/estadisticas`, statsList);
-      toast.success("¡Estadísticas guardadas exitosamente!");
-      router.push(`/scrim/${id}`);
+      await apiClient.post(`/scrims/${id}/estadisticas`, payload);
+      toast.success("¡Estadísticas guardadas!");
+      router.push(`/scrim/${id}`); 
     } catch (err: any) {
-      toast.error(getErrMsg(err) || "Error al guardar estadísticas.");
+      console.error(err);
+      toast.error(err.response?.data?.error || "Error al guardar estadísticas.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  if (loading || !scrim) {
+  if (loading || auth.loading) {
     return (
       <div className="flex flex-col min-h-screen">
         <Header />
-        <main className="flex-1 flex items-center justify-center">
-          Cargando formulario...
-        </main>
+        <main className="flex-1 flex items-center justify-center">Cargando participantes...</main>
       </div>
     );
   }
@@ -153,16 +129,17 @@ export default function StatsPage() {
   return (
     <div className="flex flex-col min-h-screen">
       <Header />
-      <main className="flex-1 p-6 md:p-8 max-w-6xl mx-auto w-full space-y-8">
+      <main className="flex-1 p-6 md:p-8 max-w-4xl mx-auto w-full">
         <Card>
           <CardHeader>
             <CardTitle>Cargar Estadísticas</CardTitle>
             <CardDescription>
-              Registra los resultados para el scrim de {scrim.juego} (ID: {scrim.id}).
+              Ingresa los resultados para los jugadores que participaron en el Scrim. 
+              Si alguien fue suplente o no jugó, puedes eliminarlo de la lista.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -173,84 +150,74 @@ export default function StatsPage() {
                       <TableHead>Assists</TableHead>
                       <TableHead>MVP</TableHead>
                       <TableHead>Observaciones</TableHead>
+                      <TableHead>Acción</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {participants.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center">
-                          No hubo jugadores aceptados.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {participants.map((p) => (
-                      <TableRow key={p.usuarioId}>
-                        <TableCell className="font-medium">
-                          {p.username || p.usuarioId}
-                        </TableCell>
-
+                    {stats.map((stat) => (
+                      <TableRow key={stat.usuarioId}>
+                        <TableCell className="font-medium">{stat.username}</TableCell>
                         <TableCell>
                           <Input
                             type="number"
-                            min={0}
-                            className="w-[100px]"
-                            value={statsMap[p.usuarioId]?.kills ?? 0}
-                            onChange={(e) =>
-                              handleStatChange(p.usuarioId, "kills", setNumber(e.target.value))
-                            }
+                            min="0"
+                            value={stat.kills}
+                            onChange={(e) => handleStatChange(stat.usuarioId, 'kills', parseInt(e.target.value) || 0)}
+                            className="w-20"
                           />
                         </TableCell>
-
                         <TableCell>
                           <Input
                             type="number"
-                            min={0}
-                            className="w-[100px]"
-                            value={statsMap[p.usuarioId]?.deaths ?? 0}
-                            onChange={(e) =>
-                              handleStatChange(p.usuarioId, "deaths", setNumber(e.target.value))
-                            }
+                            min="0"
+                            value={stat.deaths}
+                            onChange={(e) => handleStatChange(stat.usuarioId, 'deaths', parseInt(e.target.value) || 0)}
+                            className="w-20"
                           />
                         </TableCell>
-
                         <TableCell>
                           <Input
                             type="number"
-                            min={0}
-                            className="w-[100px]"
-                            value={statsMap[p.usuarioId]?.assists ?? 0}
-                            onChange={(e) =>
-                              handleStatChange(p.usuarioId, "assists", setNumber(e.target.value))
-                            }
+                            min="0"
+                            value={stat.assists}
+                            onChange={(e) => handleStatChange(stat.usuarioId, 'assists', parseInt(e.target.value) || 0)}
+                            className="w-20"
                           />
                         </TableCell>
-
                         <TableCell>
                           <Checkbox
-                            checked={!!statsMap[p.usuarioId]?.mvp}
-                            onCheckedChange={(v) =>
-                              handleStatChange(p.usuarioId, "mvp", !!v)
-                            }
+                            checked={stat.mvp}
+                            onCheckedChange={(checked) => handleMvpChange(stat.usuarioId, !!checked)}
                           />
                         </TableCell>
-
                         <TableCell>
+                          {/* --- AQUÍ ESTÁ EL ARREGLO --- */}
+                          {/* Añadimos '?? ""' para manejar el tipo 'null' o 'undefined' */}
                           <Textarea
-                            placeholder="Notas / highlights del jugador..."
-                            value={statsMap[p.usuarioId]?.observaciones ?? ""}
-                            onChange={(e) =>
-                              handleStatChange(p.usuarioId, "observaciones", e.target.value)
-                            }
+                            value={stat.observaciones ?? ''} 
+                            onChange={(e) => handleStatChange(stat.usuarioId, 'observaciones', e.target.value)}
+                            placeholder="Comentarios..."
+                            className="min-w-[150px]"
                           />
+                        </TableCell>
+                        <TableCell>
+                           <Button 
+                             type="button" 
+                             variant="ghost" 
+                             size="icon" 
+                             onClick={() => removeParticipant(stat.usuarioId)}
+                             aria-label="Eliminar fila"
+                           >
+                             <Trash2Icon className="w-4 h-4 text-red-500" />
+                           </Button>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
-
-              <Button type="submit" className="mt-6">
-                Guardar Estadísticas
+              <Button type="submit" disabled={isSubmitting || stats.length === 0} className="w-full">
+                {isSubmitting ? "Guardando..." : "Guardar Estadísticas"}
               </Button>
             </form>
           </CardContent>
@@ -259,3 +226,4 @@ export default function StatsPage() {
     </div>
   );
 }
+

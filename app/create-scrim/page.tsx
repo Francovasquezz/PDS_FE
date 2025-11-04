@@ -179,10 +179,25 @@ export default function CreateScrimPage() {
                   <Label htmlFor="duracion">Duración (minutos)</Label>
                   <Input name="duracion" type="number" value={formData.duracion} onChange={handleChange} />
                 </div>
+                
+                {/* --- INICIO DE LA MODIFICACIÓN --- */}
                 <div className="space-y-2">
-                  <Label htmlFor="cupo">Cupo (total jugadores)</Label>
-                  <Input name="cupo" type="number" value={formData.cupo} onChange={handleChange} />
+                  {/* 1. Label cambiado */}
+                  <Label htmlFor="cupo">Cupos adicionales</Label>
+                  <Input 
+                    name="cupo" 
+                    type="number" 
+                    value={formData.cupo} 
+                    onChange={handleChange} 
+                    placeholder="Ej: 1 (para 1v1), 9 (para 5v5)"
+                  />
+                  {/* 2. Texto de ayuda añadido */}
+                  <p className="text-sm text-muted-foreground">
+                    No te incluyas a ti (el organizador) en esta cuenta.
+                  </p>
                 </div>
+                {/* --- FIN DE LA MODIFICACIÓN --- */}
+                
               </div>
               
               {/* Fila 4: Modalidad y Estrategia */}
@@ -204,7 +219,9 @@ export default function CreateScrimPage() {
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="BY_MMR">Por Rango (MMR)</SelectItem>
-                      <SelectItem value="BY_LATENCY">Por Latencia</SelectItem>
+                      {/* --- CORRECCIÓN DEL TYPO --- */}
+                      <SelectItem value="BY_LATENCY">Por Latencia</SelectItem> 
+                      {/* --- FIN DE LA CORRECCIÓN --- */}
                       <SelectItem value="BY_HISTORY">Por Historial</SelectItem>
                     </SelectContent>
                   </Select>
@@ -228,3 +245,4 @@ export default function CreateScrimPage() {
     </div>
   );
 }
+

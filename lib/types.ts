@@ -74,8 +74,23 @@ export interface MyScrimResponse {
 }
 
 // ---------- ESTADISTICAS (alineado al back) ----------
+
+// DTO que envía el Owner
 export interface EstadisticaRequest {
   usuarioId: string;        // UUID en string
+  mvp: boolean;
+  kills: number;
+  deaths: number;
+  assists: number;
+  observaciones?: string | null;
+}
+
+// DTO que recibe el Frontend (con username)
+export interface EstadisticaResponse {
+  id: string;
+  scrimId: string;
+  usuarioId: string;
+  username: string; // <-- La data extra
   mvp: boolean;
   kills: number;
   deaths: number;

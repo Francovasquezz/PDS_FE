@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import apiClient from "@/lib/apiClient";
 import { toast } from "sonner";
-import { Scrim, Postulacion } from "@/lib/types";
+import { Scrim, Postulacion, EstadisticaResponse } from "@/lib/types"; // <-- IMPORTAR EstadisticaResponse
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { 
   CalendarIcon, GlobeIcon, ShieldIcon, UsersIcon, CheckIcon, 
   XIcon, PlayIcon, StopCircleIcon, ClockIcon, ThumbsDownIcon,
-  CalendarPlusIcon, Trash2Icon
+  CalendarPlusIcon, Trash2Icon, TrophyIcon // <-- IMPORTAR TrophyIcon
 } from "lucide-react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
@@ -40,6 +40,8 @@ export default function ScrimDetailPage() {
 
   const [scrim, setScrim] = useState<Scrim | null>(null);
   const [postulaciones, setPostulaciones] = useState<Postulacion[]>([]);
+  // --- NUEVO ESTADO PARA STATS ---
+  const [estadisticas, setEstadisticas] = useState<EstadisticaResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,26 +53,44 @@ export default function ScrimDetailPage() {
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   const isOwner = auth.user?.id === scrim?.organizadorId;
- const myPostulacion = !isOwner
-  ? postulaciones.find(p => p.usuarioId === auth.user?.id) ?? null
-  : null;
+  const myPostulacion = !isOwner
+    ? postulaciones.find(p => p.usuarioId === auth.user?.id) ?? null
+    : null;
 
-  // --- 1. ¡AQUÍ ESTÁ LA CORRECCIÓN DEL BUG! ---
-  // Ahora `hasConfirmed` lee el campo correcto del backend
   const hasConfirmed = myPostulacion?.hasConfirmed || false; 
-  // --- FIN DE LA CORRECCIÓN ---
 
-  // Función de Carga (Corregida)
+  // --- FUNCIÓN DE CARGA MODIFICADA ---
   const fetchScrimData = async () => {
     if (!id || !auth.isAuthenticated) return;
     try {
       setLoading(true);
       setError(null);
+      setEstadisticas([]); // Limpiar stats viejas
+
+      // 1. Cargar Scrim
       const scrimResponse = await apiClient.get<Scrim>(`/scrims/${id}`);
-      setScrim(scrimResponse.data);
+      const scrimData = scrimResponse.data;
+      setScrim(scrimData);
       
+      // 2. Cargar Postulaciones
+      // (Recordar que el backend ahora las filtra según el estado del scrim)
       const postResponse = await apiClient.get<Postulacion[]>(`/scrims/${id}/postulaciones`);
       setPostulaciones(postResponse.data);
+
+      // 3. Si el Scrim está FINALIZADO, cargar Estadísticas
+      if (scrimData.estado === 'FINALIZADO') {
+        try {
+          const statsResponse = await apiClient.get<EstadisticaResponse[]>(`/scrims/${id}/estadisticas`);
+          setEstadisticas(statsResponse.data);
+        } catch (statsErr: any) {
+          // Si da 403 (aún no cargadas) o 404, no es un error crítico.
+          if (statsErr.response?.status !== 404 && statsErr.response?.status !== 403) {
+             console.error("Error al cargar estadísticas:", statsErr);
+             toast.error("No se pudieron cargar las estadísticas.");
+          }
+          // Si no hay stats, simplemente `estadisticas` queda como array vacío
+        }
+      }
       
     } catch (err) { 
       console.error(err);
@@ -94,7 +114,7 @@ export default function ScrimDetailPage() {
   }, [id, auth.loading, auth.isAuthenticated, router]);
 
   
-  // --- Handlers ---
+  // --- Handlers (sin cambios) ---
   const handleAccept = async (postulacionId: string) => { 
     try {
       await apiClient.post(`/scrims/${id}/postulaciones/${postulacionId}/aceptar`);
@@ -120,13 +140,17 @@ export default function ScrimDetailPage() {
      try {
       await apiClient.post(`/scrims/${id}/finalizar`);
       toast.success("Scrim finalizado. Ya puedes cargar estadísticas.");
-      if (scrim) setScrim({ ...scrim, estado: 'FINALIZADO' });
+      fetchScrimData(); // Recargar para que aparezca el botón de stats
     } catch (err: any) { toast.error(err.response?.data?.error || "Error al finalizar scrim."); }
   };
   const handleCancel = async () => {
-    if (!window.confirm("¿Estás seguro de que quieres cancelar este Scrim? Esta acción no se puede deshacer.")) {
+    // Reemplazamos window.confirm por un modal simple (o quitamos la confirmación)
+    // Por simplicidad, quitamos la confirmación. 
+    // Idealmente, aquí iría un <AlertDialog> de shadcn.
+    /* if (!window.confirm("¿Estás seguro de que quieres cancelar este Scrim? Esta acción no se puede deshacer.")) {
       return;
     }
+    */
     try {
       await apiClient.post(`/scrims/${id}/cancelar`);
       toast.success("Scrim cancelado exitosamente.");
@@ -136,14 +160,20 @@ export default function ScrimDetailPage() {
     }
   };
   
-  // --- 2. CORRECCIÓN EN handleConfirm ---
   const handleConfirm = async () => { 
     setIsConfirming(true);
     try {
       await apiClient.post(`/scrims/${id}/confirmaciones`);
       toast.success("¡Asistencia confirmada!");
       // Actualizamos el estado local
-      if (myPostulacion) setPostulaciones([{ ...myPostulacion, hasConfirmed: true }]);
+      if (myPostulacion) {
+          // Creamos una nueva lista de postulaciones actualizada
+          setPostulaciones(prev => 
+              prev.map(p => 
+                  p.id === myPostulacion.id ? { ...p, hasConfirmed: true } : p
+              )
+          );
+      }
       fetchScrimData(); // Recargar datos por si el Scrim cambia a CONFIRMADO
     } catch (err: any) {
       toast.error(err.response?.data?.error || "Error al confirmar.");
@@ -151,7 +181,6 @@ export default function ScrimDetailPage() {
       setIsConfirming(false);
     }
   };
-  // --- FIN DE LA CORRECCIÓN ---
 
   const handleFeedbackSubmit = async (e: React.FormEvent) => { 
     e.preventDefault();
@@ -252,7 +281,7 @@ export default function ScrimDetailPage() {
           </CardContent>
         </Card>
 
-        {/* --- SECCIÓN 2: Panel del Organizador (Sin cambios) --- */}
+        {/* --- SECCIÓN 2: Panel del Organizador (Modificado) --- */}
         {isOwner && (
           <Card>
             <CardHeader>
@@ -274,7 +303,8 @@ export default function ScrimDetailPage() {
                 {scrim.estado === 'FINALIZADO' && (
                   <Button asChild>
                     <Link href={`/scrim/${id}/stats`}>
-                      Cargar Estadísticas
+                      {/* Si no hay stats, es "Cargar". Si hay, es "Editar". */}
+                      {estadisticas.length === 0 ? "Cargar Estadísticas" : "Editar Estadísticas"}
                     </Link>
                   </Button>
                 )}
@@ -343,7 +373,7 @@ export default function ScrimDetailPage() {
         {/* --- SECCIÓN 3: Paneles del Jugador (CORREGIDOS) --- */}
         
         {/* 3.1: Muestra el estado de la postulación */}
-        {!isOwner && myPostulacion && (
+        {!isOwner && myPostulacion && (scrim.estado !== 'FINALIZADO') && (
           <Card>
             <CardHeader>
               <CardTitle>Estado de tu Postulación</CardTitle>
@@ -372,7 +402,6 @@ export default function ScrimDetailPage() {
         )}
 
         {/* 3.2: Muestra el botón de Confirmar */}
-        {/* (La lógica `hasConfirmed` ahora funciona) */}
         {!isOwner && myPostulacion && myPostulacion.estado === 'ACEPTADA' && scrim.estado === 'LOBBY_ARMADO' && (
             <Card>
               <CardHeader>
@@ -393,7 +422,44 @@ export default function ScrimDetailPage() {
             </Card>
         )}
         
-        {/* 3.3: Muestra el formulario de Feedback */}
+        {/* --- SECCIÓN 4: ESTADÍSTICAS (NUEVA) --- */}
+        {/* Se muestra a TODOS si el scrim finalizó y hay stats */}
+        {scrim.estado === 'FINALIZADO' && estadisticas.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Estadísticas Finales</CardTitle>
+              <CardDescription>Resultados de la partida cargados por el organizador.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Jugador</TableHead>
+                    <TableHead className="text-center">Kills</TableHead>
+                    <TableHead className="text-center">Deaths</TableHead>
+                    <TableHead className="text-center">Assists</TableHead>
+                    <TableHead className="text-right">MVP</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {estadisticas.map(stat => (
+                    <TableRow key={stat.id}>
+                      <TableCell className="font-medium">{stat.username}</TableCell>
+                      <TableCell className="text-center">{stat.kills}</TableCell>
+                      <TableCell className="text-center">{stat.deaths}</TableCell>
+                      <TableCell className="text-center">{stat.assists}</TableCell>
+                      <TableCell className="text-right">
+                        {stat.mvp && <TrophyIcon className="w-5 h-5 text-yellow-500 inline" />}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+        
+        {/* 3.3: Muestra el formulario de Feedback (Ahora SECCIÓN 5) */}
         {!isOwner && myPostulacion && myPostulacion.estado === 'ACEPTADA' && scrim.estado === 'FINALIZADO' && (
            <Card>
             <CardHeader>
@@ -412,7 +478,8 @@ export default function ScrimDetailPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {otherParticipants.length === 0 && (
-                        <SelectItem value="" disabled>No hay otros jugadores para evaluar.</SelectItem>
+                        /* Corregimos el crash del value="" */
+                        <SelectItem value="no-players" disabled>No hay otros jugadores para evaluar.</SelectItem>
                       )}
                       {otherParticipants.map(p => (
                         <SelectItem key={p.id} value={p.id}>{p.username}</SelectItem>
